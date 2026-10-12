@@ -161,3 +161,7 @@ cython_debug/
 
 # Mujoco
 MUJOCO_LOG.TXT
+
+
+#Typings
+typings/
