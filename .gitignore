@@ -166,3 +166,8 @@ MUJOCO_LOG.TXT
 project/solution.py
 project/evaluate.py
 project/seeds.txt
+
+
+
+#Typings
+typings/
