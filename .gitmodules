@@ -1,3 +1,9 @@
 [submodule "mujoco_menagerie"]
 	path = mujoco_menagerie
 	url = https://github.com/google-deepmind/mujoco_menagerie.git
+[submodule "A2-daniel-goldbach"]
+	path = A2
+	url = git@github.com:danielgoldbach68/boun-cmpe434-a2.git
+[submodule "A1-daniel-goldbach"]
+	path = A1
+	url = git@github.com:danielgoldbach68/boun-cmpe434-a1.git
