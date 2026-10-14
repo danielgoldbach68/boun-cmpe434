@@ -7,3 +7,6 @@
 [submodule "A1-daniel-goldbach"]
 	path = A1
 	url = git@github.com:danielgoldbach68/boun-cmpe434-a1.git
+[submodule "A3"]
+	path = A3
+	url = git@github.com:danielgoldbach68/boun-cmpe434-a3.git
