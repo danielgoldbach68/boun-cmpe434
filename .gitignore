@@ -171,3 +171,14 @@ project/seeds.txt
 
 #Typings
 typings/
+
+#pip requirements
+requirements.txt
+
+#idea (pycharm)
+.idea/
+
+#nvim configs
+.nvim-xml-scheme.lua
+pyrightconfig.json
+
