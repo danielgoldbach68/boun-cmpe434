@@ -13,3 +13,9 @@
 [submodule "A4"]
 	path = A4
 	url = git@github.com:danielgoldbach68/boun-cmpe434-a4.git
+[submodule "PythonRobotics"]
+	path = PythonRobotics
+	url = https://github.com/AtsushiSakai/PythonRobotics
+[submodule "A5"]
+	path = A5
+	url = git@github.com:danielgoldbach68/boun-cmpe434-a5.git
