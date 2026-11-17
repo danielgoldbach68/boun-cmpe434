@@ -1,16 +1,24 @@
 // For format details, see https://aka.ms/devcontainer.json. 
 {
-  "name": "bouncmpe",
+  "name": "labs434",
   "context": "..",
   "dockerFile": "./Dockerfile",
   "customizations": {
     "vscode": {
-      "settings": {},
+      "settings": {
+        "python.defaultInterpreterPath": "/opt/venv/bin/python",
+        "python.terminal.activateEnvironment": true
+      },
       "extensions": [
         "esbenp.prettier-vscode",
         "ms-python.python",
-        "samuelcolvin.jinjahtml"
-      ],
+        "samuelcolvin.jinjahtml",
+        "ms-azuretools.vscode-containers",
+        "julienblanchon.mujoco-viewer",
+        "Gruntfuggly.todo-tree",
+        "redhat.vscode-xml",
+        "docker.docker"
+      ]
     }
   },
   "runArgs": [
@@ -24,7 +32,9 @@
   },
   "mounts": [
     "source=/tmp/.X11-unix,target=/tmp/.X11-unix,type=bind,consistency=cached",
-    "source=${env:HOME}/.Xauthority,target=/home/ubuntu/.Xauthority,type=bind,consistency=cached"
+    "source=${localEnv:XAUTHORITY},target=/home/ubuntu/.Xauthority,type=bind,consistency=cached",
+    "source=${localEnv:HOME}/.codex,target=/home/ubuntu/.codex,type=bind"
+
   ],
   // Uncomment to connect as a non-root user if you've added one.
   "remoteUser": "ubuntu"

@@ -5,6 +5,7 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
         sudo \
         git \
         python3 \
+        python3-venv \
         python3-pip \
         python-is-python3 \
     && apt-get autoremove -y && apt-get clean -y && rm -rf /var/lib/apt/lists/* 
@@ -33,10 +34,13 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
         ffmpeg \
     && apt-get autoremove -y && apt-get clean -y && rm -rf /var/lib/apt/lists/* 
 
-# Update pip and install Python packages
-RUN python -m pip install --no-cache-dir --break-system-packages\
-        mujoco \
-        matplotlib 
+# Install project dependencies into the container's Python environment.
+COPY requirements.txt /tmp/requirements.txt
+RUN python -m venv /opt/venv
+
+ENV PATH="/opt/venv/bin:${PATH}"
+ENV VIRTUAL_ENV="/opt/venv"
+RUN python -m pip install --no-cache-dir -r /tmp/requirements.txt && rm /tmp/requirements.txt
         
 ## Graphical apps (gtk) complain if we don't set these variables
 ENV LANG="C"
