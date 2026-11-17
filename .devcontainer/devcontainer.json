@@ -16,8 +16,7 @@
         "ms-azuretools.vscode-containers",
         "julienblanchon.mujoco-viewer",
         "Gruntfuggly.todo-tree",
-        "redhat.vscode-xml",
-        "docker.docker"
+        "redhat.vscode-xml"
       ]
     }
   },
