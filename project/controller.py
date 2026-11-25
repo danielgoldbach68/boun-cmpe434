@@ -19,10 +19,14 @@ Wheel speeds are in rad/s within +-15.3, i.e. 1.5 m/s at the rim; larger values 
 
 import numpy as np
 
-TILE = 2.0  # m, side length of a dungeon tile
-WHEEL_RADIUS = 0.098  # m
-TRACK = 0.4044  # m, distance between the two drive wheels
+TILE = 2.0 
+"""m, side length of a dungeon tile"""
 
+WHEEL_RADIUS = 0.098
+"""m"""
+
+TRACK = 0.4044
+"""m, distance between the two drive wheels"""
 
 def wheel_speeds(v, w):
     """Return the left and right wheel speeds (rad/s) for forward speed v (m/s) and turn rate w (rad/s)."""
