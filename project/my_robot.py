@@ -1,10 +1,21 @@
 from collections.abc import Mapping, Sequence
+from math import atan2, cos, hypot, sin
+
+from mujoco import MjData, MjModel
 
 from controller import TILE, wheel_speeds
 from plan_a_star import AStarPlanner, Tile
-from mujoco import MjData, MjModel
 
 WorldPoint = tuple[float, float]
+WheelSpeeds = tuple[float, float]
+
+LOOKAHEAD: float = 0.5  # m
+CORNER_TOLERANCE: float = 0.15  # m
+FINISH_TOLERANCE: float = 0.35  # m, inside the simulator's finish radius
+CRUISE_SPEED: float = 0.6  # m/s
+MAX_TURN_RATE: float = 1.2  # rad/s
+ALIGN_TOLERANCE: float = 0.12  # rad
+REALIGN_THRESHOLD: float = 0.55  # rad
 
 
 class Controller:
@@ -28,6 +39,51 @@ class Controller:
         self.waypoints: list[WorldPoint] = self._route_to_waypoints(route)
 
         self.target_index: int = 1
+        self.aligning: bool = True
+
+    def control(self, m: MjModel, d: MjData) -> WheelSpeeds:
+        """Track the planned waypoints and return wheel speeds in rad/s."""
+        if self.target_index >= len(self.waypoints):
+            return 0.0, 0.0
+
+        base = d.body("robot-base_link")
+        position: WorldPoint = (float(base.xpos[0]), float(base.xpos[1]))
+        qw, qx, qy, qz = map(float, base.xquat)
+        yaw: float = atan2(2.0 * (qw * qz + qx * qy), 1.0 - 2.0 * (qy * qy + qz * qz))
+
+        end: WorldPoint = self.waypoints[self.target_index]
+        distance: float = hypot(end[0] - position[0], end[1] - position[1])
+        at_finish: bool = self.target_index == len(self.waypoints) - 1
+        tolerance: float = FINISH_TOLERANCE if at_finish else CORNER_TOLERANCE
+        if distance <= tolerance:
+            self.target_index += 1
+            self.aligning = True
+            return 0.0, 0.0
+
+        start: WorldPoint = self.waypoints[self.target_index - 1]
+        target: WorldPoint = pursuit_target(position, start, end, LOOKAHEAD)
+        offset: WorldPoint = (target[0] - position[0], target[1] - position[1])
+        lateral: float = lateral_offset(offset, yaw)
+        curvature: float = pursuit_curvature(offset, lateral)
+        return self._pursuit_wheel_speeds(offset, yaw, distance, curvature)
+
+    def _pursuit_wheel_speeds(
+        self, offset: WorldPoint, yaw: float, distance: float, curvature: float
+    ) -> WheelSpeeds:
+        """Steps 5–6. Return wheel commands for this simulation step."""
+        angle: float = atan2(offset[1], offset[0]) - yaw
+        heading_error: float = atan2(sin(angle), cos(angle))
+        threshold: float = ALIGN_TOLERANCE if self.aligning else REALIGN_THRESHOLD
+        self.aligning = abs(heading_error) > threshold
+        if self.aligning:
+            return wheel_speeds(0.0, self._bounded_turn_rate(2.0 * heading_error))
+
+        speed: float = min(CRUISE_SPEED, 0.8 * distance)
+        return wheel_speeds(speed, self._bounded_turn_rate(speed * curvature))
+
+    @staticmethod
+    def _bounded_turn_rate(rate: float) -> float:
+        return max(-MAX_TURN_RATE, min(MAX_TURN_RATE, rate))
 
     @staticmethod
     def _route_to_waypoints(route: Sequence[Tile]) -> list[WorldPoint]:
@@ -49,6 +105,40 @@ class Controller:
             waypoint_tiles.append(route[-1])
 
         return [(i * TILE, j * TILE) for i, j in waypoint_tiles]
+
+
+# Pure-pursuit geometry adapted from A4/python/pure_pursuit_driver.py.
+def pursuit_target(
+    position: WorldPoint, start: WorldPoint, end: WorldPoint, lookahead: float
+) -> WorldPoint:
+    """Steps 1–2. Project onto the segment and look ahead toward its endpoint."""
+    dx: float = end[0] - start[0]
+    dy: float = end[1] - start[1]
+    length: float = hypot(dx, dy)
+    if length < 1e-9:
+        return end
+
+    projection: float = (
+        (position[0] - start[0]) * dx + (position[1] - start[1]) * dy
+    ) / length
+    progress: float = max(0.0, min(length, projection))
+    # A4 carries look-ahead across segments and stores monotonic progress.
+    # Cap it at this endpoint and let the controller decide when to turn.
+    fraction: float = min(length, progress + lookahead) / length
+    return start[0] + fraction * dx, start[1] + fraction * dy
+
+
+def lateral_offset(offset: WorldPoint, yaw: float) -> float:
+    """Step 3. Measure the target's sideways offset, positive to the left."""
+    dx, dy = offset
+    return -sin(yaw) * dx + cos(yaw) * dy
+
+
+def pursuit_curvature(offset: WorldPoint, lateral: float) -> float:
+    """Step 4. Return signed curvature in inverse meters."""
+    dx, dy = offset
+    distance_squared: float = dx * dx + dy * dy
+    return 2.0 * lateral / max(distance_squared, 1e-9)
 
 
 def world_to_tile(position: WorldPoint) -> Tile:
