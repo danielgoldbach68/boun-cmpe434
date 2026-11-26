@@ -4,11 +4,25 @@ from typing import NamedTuple
 
 from mujoco import MjData, MjModel
 
-from controller import TILE, wheel_speeds
 from plan_a_star import AStarPlanner, Tile
 
 WorldPoint = tuple[float, float]
 WheelSpeeds = tuple[float, float]
+
+
+TILE = 2.0
+"""m, side length of a dungeon tile"""
+
+WHEEL_RADIUS = 0.098
+"""m"""
+
+TRACK = 0.4044
+"""m, distance between the two drive wheels"""
+
+
+def wheel_speeds(v: float, w: float) -> WheelSpeeds:
+    """Return the left and right wheel speeds (rad/s) for forward speed v (m/s) and turn rate w (rad/s)."""
+    return (v - w * TRACK / 2) / WHEEL_RADIUS, (v + w * TRACK / 2) / WHEEL_RADIUS
 
 
 class Quaternion(NamedTuple):
@@ -32,12 +46,19 @@ class Quaternion(NamedTuple):
         )
 
 LOOKAHEAD: float = 0.5  # m
+LOOKAHEAD_TIME: float = 1.25  # s
 CORNER_TOLERANCE: float = 0.15  # m
 FINISH_TOLERANCE: float = 0.35  # m, inside the simulator's finish radius
-CRUISE_SPEED: float = 0.6  # m/s
+BASELINE_SPEED: float = 0.4  # m/s
+CRUISE_SPEED: float = 0.8  # m/s
 MAX_TURN_RATE: float = 1.2  # rad/s
 ALIGN_TOLERANCE: float = 0.12  # rad
 REALIGN_THRESHOLD: float = 0.55  # rad
+STOP_SPEED: float = 0.04  # m/s
+STOP_TURN_RATE: float = 0.08  # rad/s
+APPROACH_GAIN: float = 0.8  # 1/s
+SLOW_ZONE: float = 2.0  # m from either end of a straight
+STRAIGHT_SPEED_GAIN: float = 0.2  # 1/s
 
 
 class Controller:
@@ -62,6 +83,8 @@ class Controller:
 
         self.target_index: int = 1
         self.aligning: bool = True
+        self.braking: bool = False
+        self.cruise_speed = CRUISE_SPEED
 
     def control(self, m: MjModel, d: MjData) -> WheelSpeeds:
         """Track the planned waypoints and return wheel speeds in rad/s.
@@ -89,20 +112,33 @@ class Controller:
         distance: float = hypot(end[0] - position[0], end[1] - position[1])
         at_finish: bool = self.target_index == len(self.waypoints) - 1
         tolerance: float = FINISH_TOLERANCE if at_finish else CORNER_TOLERANCE
-        if distance <= tolerance:
-            self.target_index += 1
-            self.aligning = True
+        if self.braking or distance <= tolerance:
+            self.braking = True
+            if hypot(*base.cvel[3:5]) <= STOP_SPEED and abs(base.cvel[2]) <= STOP_TURN_RATE:
+                self.target_index += 1
+                self.aligning = True
+                self.braking = False
             return 0.0, 0.0
 
         start: WorldPoint = self.waypoints[self.target_index - 1]
-        target: WorldPoint = pursuit_target(position, start, end, LOOKAHEAD)
+        # Accelerate only in the middle of a straight, after the base has settled
+        # into its new heading and with enough distance left to slow down.
+        distance_from_start = hypot(position[0] - start[0], position[1] - start[1])
+        straight_distance = max(0.0, min(distance_from_start, distance) - SLOW_ZONE)
+        speed = min(
+            self.cruise_speed,
+            BASELINE_SPEED + STRAIGHT_SPEED_GAIN * straight_distance,
+            APPROACH_GAIN * distance,
+        )
+        lookahead = max(LOOKAHEAD, LOOKAHEAD_TIME * speed)
+        target: WorldPoint = pursuit_target(position, start, end, lookahead)
         offset: WorldPoint = (target[0] - position[0], target[1] - position[1])
         lateral: float = lateral_offset(offset, yaw)
         curvature: float = pursuit_curvature(offset, lateral)
-        return self._pursuit_wheel_speeds(offset, yaw, distance, curvature)
+        return self._pursuit_wheel_speeds(offset, yaw, speed, curvature)
 
     def _pursuit_wheel_speeds(
-        self, offset: WorldPoint, yaw: float, distance: float, curvature: float
+        self, offset: WorldPoint, yaw: float, speed: float, curvature: float
     ) -> WheelSpeeds:
         """Steps 5–6. Return wheel commands for this simulation step."""
         angle: float = atan2(offset[1], offset[0]) - yaw
@@ -112,7 +148,6 @@ class Controller:
         if self.aligning:
             return wheel_speeds(0.0, self._bounded_turn_rate(2.0 * heading_error))
 
-        speed: float = min(CRUISE_SPEED, 0.8 * distance)
         return wheel_speeds(speed, self._bounded_turn_rate(speed * curvature))
 
     @staticmethod
@@ -156,9 +191,7 @@ def pursuit_target(
         (position[0] - start[0]) * dx + (position[1] - start[1]) * dy
     ) / length
     progress: float = max(0.0, min(length, projection))
-    # this implementation is kinda limited by the capping of the lookahead distance :(
-    # A4 carries look-ahead across segments and stores monotonic progress.
-    # Cap it at this endpoint and let the controller decide when to turn.
+    # Keep lookahead on the current segment so the robot approaches the turn waypoint.
     fraction: float = min(length, progress + lookahead) / length
     return start[0] + fraction * dx, start[1] + fraction * dy
 
