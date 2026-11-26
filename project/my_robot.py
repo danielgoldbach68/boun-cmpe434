@@ -156,6 +156,7 @@ def pursuit_target(
         (position[0] - start[0]) * dx + (position[1] - start[1]) * dy
     ) / length
     progress: float = max(0.0, min(length, projection))
+    # this implementation is kinda limited by the capping of the lookahead distance :(
     # A4 carries look-ahead across segments and stores monotonic progress.
     # Cap it at this endpoint and let the controller decide when to turn.
     fraction: float = min(length, progress + lookahead) / length
