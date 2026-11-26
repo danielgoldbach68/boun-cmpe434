@@ -2,6 +2,9 @@ from collections.abc import Mapping, Sequence
 from math import atan2, cos, hypot, sin
 from typing import NamedTuple
 
+
+import numpy as np
+
 from mujoco import MjData, MjModel
 
 from plan_a_star import AStarPlanner, Tile
@@ -63,6 +66,8 @@ STRAIGHT_SPEED_GAIN: float = 0.2  # 1/s
 
 class Controller:
     def __init__(self, m: MjModel, d: MjData, tiles: Mapping[Tile, str]) -> None:
+        self.laser = [d.sensor(f"robot-laser{i:02d}") for i in range(19)]
+
         start_position: WorldPoint = (
             float(d.site("start").xpos[0]),
             float(d.site("start").xpos[1]),
@@ -102,6 +107,13 @@ class Controller:
         """
         if self.target_index >= len(self.waypoints):
             return 0.0, 0.0
+        
+        ranges = np.array([s.data[0] for s in self.laser])
+        ranges[ranges < 0] = np.inf  # nothing within range
+        ahead = ranges[6:13].min()  # the 7 beams within 30 degrees of straight ahead
+
+        if ahead < 0.6:
+            return wheel_speeds(0.0, 1.0)  # turn in place
 
         base = d.body("robot-base_link")
         position: WorldPoint = (float(base.xpos[0]), float(base.xpos[1]))
