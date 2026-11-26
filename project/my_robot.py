@@ -1,5 +1,6 @@
 from collections.abc import Mapping, Sequence
 from math import atan2, cos, hypot, sin
+from typing import NamedTuple
 
 from mujoco import MjData, MjModel
 
@@ -8,6 +9,27 @@ from plan_a_star import AStarPlanner, Tile
 
 WorldPoint = tuple[float, float]
 WheelSpeeds = tuple[float, float]
+
+
+class Quaternion(NamedTuple):
+    """Orientation in MuJoCo's (w, x, y, z) order."""
+
+    w: float
+    x: float
+    y: float
+    z: float
+
+    @classmethod
+    def from_sequence(cls, values: Sequence[float]) -> "Quaternion":
+        """Convert MuJoCo's (w, x, y, z) orientation to a quaternion."""
+        return cls(float(values[0]), float(values[1]), float(values[2]), float(values[3]))
+
+    def yaw(self) -> float:
+        """Return the heading angle in radians."""
+        return atan2(
+            2.0 * (self.w * self.z + self.x * self.y),
+            1.0 - 2.0 * (self.y * self.y + self.z * self.z),
+        )
 
 LOOKAHEAD: float = 0.5  # m
 CORNER_TOLERANCE: float = 0.15  # m
@@ -42,14 +64,26 @@ class Controller:
         self.aligning: bool = True
 
     def control(self, m: MjModel, d: MjData) -> WheelSpeeds:
-        """Track the planned waypoints and return wheel speeds in rad/s."""
+        """Track the planned waypoints and return wheel speeds in rad/s.
+        Uses pure pursuit. See: https://existentialrobotics.org/RobotProvingGrounds/algorithms/control/content/pure_pursuit
+
+        Regarding the Algorithm steps in the website the relation is roughly:
+
+        Website Step    | python function
+        ---             | --- 
+        Steps 1-2       | `pursuit_target`
+        Step 3          | `lateral_offset`
+        Step 4          | `pursuit_curvature`
+        Steps 5-6       | `_pursuit_wheel_speeds` 
+
+        """
         if self.target_index >= len(self.waypoints):
             return 0.0, 0.0
 
         base = d.body("robot-base_link")
         position: WorldPoint = (float(base.xpos[0]), float(base.xpos[1]))
-        qw, qx, qy, qz = map(float, base.xquat)
-        yaw: float = atan2(2.0 * (qw * qz + qx * qy), 1.0 - 2.0 * (qy * qy + qz * qz))
+        orientation: Quaternion = Quaternion.from_sequence(base.xquat)
+        yaw: float = orientation.yaw()
 
         end: WorldPoint = self.waypoints[self.target_index]
         distance: float = hypot(end[0] - position[0], end[1] - position[1])
